@@ -24,7 +24,7 @@ export const generateTokens = (userId) => {
     try {
       const keys = await redis.keys('users:*');
       
-      if (keys.length > 0) {   // Delete all matching keys with users ofr getallusersfor freshdata 
+      if (keys.length > 0) { 
         await redis.del(keys);
       }
     } catch (err) {
@@ -33,7 +33,7 @@ export const generateTokens = (userId) => {
   };
 
 
-  export const invalidateNotesCache = async (userId) => {   //whenver new user registerd then it clears or delete cached data with key,then when queryingfrom database again stores for fresh datas
+  export const invalidateNotesCache = async (userId) => {
     try {
       const keys = await redis.keys(`notes:*:user:${userId}`);
       if (keys.length > 0) {

@@ -15,7 +15,7 @@ const createNote=async(req,res) => {
 
         await note.save();
 
-        await invalidateNotesCache(req.user._id);
+        await invalidateNotesCache(req.user._id); //when new user register in delets cached allusers data,for freshen the datas
 
         return  res.status(201).send(note);
     } catch (error) {
@@ -28,9 +28,6 @@ const getSingleNote = async (req, res) => {
     const noteId = req.params.id;
     
     const cachedNote = await redis.hGet(`note:${noteId}`, 'data');
-
-    console.log("cached",JSON.parse(cachedNote));
-    
     
     if (cachedNote) {
       return res.send(JSON.parse(cachedNote));
@@ -96,8 +93,58 @@ const getAllNotes = async (req, res) => {
 };
 
 
+const addToPinned = async (req, res) => {
+  try {
+    const noteId = req.params.id;
+    
+    const note = await Note.findOneAndUpdate(
+      { _id: noteId, user: req.user._id },
+      { isPinned: true },
+      { new: true }
+    );
+    
+    if (!note) {
+      return res.status(404).send({ error: 'Note not found' });
+    }
+    
+    await redis.del(`note:${noteId}`);
+    await invalidateNotesCache(req.user._id); //all pinnedusers cached data deletes, for fresh data
+    
+    res.send(note);
+  } catch (error) {
+    res.status(500).send({ error: error.message });
+  }
+};
+
+const getAllPinnedNotes = async (req, res) => {
+  try {
+
+    const cacheKey = `pinned:user:${req.user._id}`;
+    const cachedPinned = await redis.hGet(cacheKey, 'data');
+    
+    if (cachedPinned) {
+      return res.send(JSON.parse(cachedPinned));
+    } 
+    
+    const pinnedNotes = await Note.find({ 
+      user: req.user._id, 
+      isPinned: true 
+    }).sort({ updatedAt: -1 });
+    
+    await redis.hSet(cacheKey, 'data', JSON.stringify(pinnedNotes));
+    await redis.expire(cacheKey, 900);
+    
+    res.send(pinnedNotes);
+  } catch (error) {
+    res.status(500).send({ error: error.message });
+  }
+};
+
+
 export {
   createNote,
   getSingleNote,
   getAllNotes,
+  addToPinned,
+  getAllPinnedNotes
 }
