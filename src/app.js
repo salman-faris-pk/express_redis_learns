@@ -5,6 +5,8 @@ import morgan from "morgan"
 import { errorHandler,notFound } from "./middleware/error.js"
 import ratelimit from "./middleware/ratelimit.js"
 import userRoutes from "./routes/users.js"
+import NoteRoutes from "./routes/notes.js"
+
 
 const app = express();
 
@@ -20,7 +22,7 @@ app.get("/health", (req, res) => {
 });
 
 app.use('/api/users',userRoutes);
-// app.use('/api/notes', require('./routes/notes'));
+app.use('/api/notes',NoteRoutes);
 
 app.use(ratelimit)
 app.use(notFound);

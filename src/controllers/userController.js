@@ -1,7 +1,7 @@
 import User from "../models/User.js"
 import bcrypt from "bcrypt"
 import { redis } from "../config/redis.js"
-import { generateTokens } from "../utils/helper.js";
+import { generateTokens, invalidateUsersCache } from "../utils/helper.js";
 import jwt from "jsonwebtoken"
 
 
@@ -32,6 +32,8 @@ const register=async(req,res)=>{
             secure: process.env.NODE_ENV === 'production',
             maxAge: 2 * 24 * 60 * 60 * 1000 
           });
+
+          await invalidateUsersCache();
 
            return res.status(201).json({
             message: 'user created success',
@@ -149,9 +151,86 @@ const logout = async (req, res) => {
     }
   };
 
+
+
+   const getUser = async(req,res)=>{
+     try {
+      const userId=req.params.id;
+
+      const cacheduser =await redis.hGet(`user:${userId}`, 'data');
+      
+      if(cacheduser){
+        return res.status(200).json({
+          success:true,
+          user: JSON.parse(cacheduser)
+        })
+      };
+      
+      const user= await User.findById(userId).select('-password -__v');
+      if (!user) {
+        return res.status(404).send({ error: 'User not found' });
+      };
+
+      await redis.hSet(`user:${userId}`, 'data', JSON.stringify(user));
+      await redis.expire(`user:${userId}`, 3600) //after 1hr it expires
+
+      return res.status(200).json({
+        sucess:true,
+        user
+      })
+      
+     } catch (error) {
+      res.status(500).send({ error: error.message });
+     }
+  };
+
+
+
+  const getAllUsers = async (req, res) => {
+    try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
+      
+      const cacheKey = `users:page:${page}:limit:${limit}`;
+      
+      const cachedUsers = await redis.hGet(cacheKey, 'data');
+                  
+      if (cachedUsers) {
+        return res.send(JSON.parse(cachedUsers));
+      }
+      
+      const users = await User.find({})
+        .select('-password -__v')
+        .skip(skip)
+        .limit(limit);
+        
+      const total = await User.countDocuments();
+      
+      const response = {
+        data: users,
+        meta: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit)
+        }
+      };
+      
+      await redis.hSet(cacheKey, 'data', JSON.stringify(response));
+      await redis.expire(cacheKey, 900);
+      
+      res.send(response);
+    } catch (error) {
+      res.status(500).send({ error: error.message });
+    }
+  };
+
   export {
     register,
     login,
     refreshToken,
-    logout
+    logout,
+    getUser,
+    getAllUsers
   }
